@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+attribute vec4 vPosition;
+attribute vec4 vColor;
+attribute vec4 vNormal;
+attribute vec2 vTexPoints;
+
+uniform int shadingType;
+varying float fShading;
+
+uniform int mappingType;
+varying float fMapping;
+
+varying vec4 fColor;
+varying vec2 fTexPoints;
+
+uniform float scale;
+uniform float translation;
+uniform float shininess;
+
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform vec4 ambientProduct;
+uniform vec4 diffuseProduct;
+uniform vec4 specularProduct;
+uniform vec4 lightPosition;
+
+varying vec3 fN;
+varying vec3 fLight;
+varying vec3 fPos;
+
+varying vec4 fAmbientProduct;
+varying vec4 fDiffuseProduct;
+varying vec4 fSpecularProduct;
+varying float fShininess;
+
+void main() {
+    mat4 transformations = mat4(scale, 0.0, 0.0, 0.0,                           // Transformations = Scaling*Translation
+                                0.0, scale, 0.0, 0.0,
+                                0.0, 0.0, scale, 0.0,
+                                translation, translation, translation, 1.0);
+                          
+    vec4 newVPosition = transformations*vPosition; 
+    gl_Position = projectionMatrix*modelViewMatrix*newVPosition;
+
+    if (shadingType == 1) { // 1: No shading; 2: Gouraud Model; 3: Phong Shading
+        fShading = 0.0;
+        fColor = vColor; }
+    
+    else {
+        vec3 pos = -normalize(modelViewMatrix*newVPosition).xyz;
+        vec3 light = normalize(modelViewMatrix*(lightPosition-newVPosition)).xyz;
+        vec3 N = normalize((modelViewMatrix*vNormal).xyz);
+        
+        if (shadingType == 2) { // Gouraud Model
+            vec3 H = normalize(light+pos);
+            vec4 ambient = ambientProduct;
+        
+            float Kd = max(dot(light, N), 0.0);
+            vec4  diffuse = Kd*diffuseProduct;
+        
+            float Ks = pow(max(dot(N, H), 0.0), shininess);
+            vec4  specular = Ks*specularProduct;
+            if (dot(light, N) < 0.0 ) {
+                specular = vec4(0.0, 0.0, 0.0, 1.0); }
+            
+            fShading = 0.0;
+            fColor = ambient + diffuse + specular;
+            fColor.a = 1.0; }
+            
+        else { // Phong Model
+            fPos = pos;
+            fLight = light;
+            fN = N;
+            fAmbientProduct = ambientProduct;
+            fDiffuseProduct = diffuseProduct;
+            fSpecularProduct = specularProduct;
+            fShininess = shininess;
+            fShading = 1.0; } }
+    
+    if (mappingType == 1) { // 1: Texture Mapping; 2: No Mapping
+        fMapping = 1.0;
+        fTexPoints = vTexPoints; }
+    else {
+        fMapping = 0.0; } }
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+
+uniform sampler2D texture;
+
+varying vec4 fColor;
+varying vec2 fTexPoints;
+
+varying float fShading;
+varying float fMapping;
+
+varying vec3 fN;
+varying vec3 fLight;
+varying vec3 fPos;
+
+varying vec4 fAmbientProduct;
+varying vec4 fDiffuseProduct;
+varying vec4 fSpecularProduct;
+varying float fShininess;
+
+void main() {
+    if (fShading == 0.0) {
+        gl_FragColor = fColor; }
+    
+    else {
+        vec3 H = normalize(fLight+fPos);
+        vec4 ambient = fAmbientProduct;
+        
+        float Kd = max(dot(fLight, fN), 0.0);
+        vec4  diffuse = Kd*fDiffuseProduct;
+        
+        float Ks = pow(max(dot(fN, H), 0.0), fShininess);
+        vec4  specular = Ks*fSpecularProduct;
+        if (dot(fLight, fN) < 0.0 ) {
+            specular = vec4(0.0, 0.0, 0.0, 1.0); }
+            
+        gl_FragColor = ambient + diffuse + specular;
+        gl_FragColor.a = 1.0; }
+    
+    if (fMapping == 1.0) {
+        vec4 textureColor = texture2D(texture, fTexPoints);
+        gl_FragColor = gl_FragColor*textureColor; } }
+</script>
+
+<script type="text/javascript" src="Common/webgl-utils.js"></script>
+<script type="text/javascript" src="Common/initShaders.js"></script>
+<script type="text/javascript" src="Common/MV.js"></script>
+<script type="text/javascript" src="homework1.js"></script>
+
+<body>
+
+<div style="width:320px; height:620px; float:left; overflow-y: scroll;">
+    <strong><font size="+2">Scaling</font></strong><br>
+    Scaling lets you change the dimension of the cube.<br><br>
+
+    <strong>Scaling Factor</strong><br>
+    The same scaling value is applied on all three<br>
+    axes in order to keep the cube's proportions.<br>
+    <i>0.01</i><input id="Scaling" type="range" min="0.01" max="2" step="0.1" value="1" /><i>2</i><br>
+    --------------------------------------------------------<br><br>
+
+    <strong><font size="+2">Translating</font></strong><br>
+    Translating lets you move the vertices across<br>
+    the 3-dimensional space.<br><br>
+    
+    <strong>Translating Factor</strong><br>
+    The same translating value is applied on all<br>
+    three axes.<br>
+    <i>-1</i><input id="Translating" type="range" min="-1" max="1" step="0.1" value="0" /><i>1</i><br>
+    --------------------------------------------------------<br><br>
+    
+    <strong><font size="+2">Projection Type</font></strong><br>
+    The cube can be visualized with two types<br>
+    of projection.<br><br>
+
+    <strong>Perspective Projection</strong><br>
+    Projectors converge at center of projection.<br>
+    <button id="Perspective" disabled>Toggle Perspective Projection</button><br><br>
+    
+    <strong>Orthographic Projection</strong><br>
+    All the projectors are parallel.<br>
+    <button id="Orthographic">Toggle Orthographic Projection</button><br><br>
+    
+    <strong>Double View</strong><br>
+    We can also view the object from both<br>
+    projections at the same time.<br>
+    <button id="Both">Toggle Both Projections</button><br>
+    --------------------------------------------------------<br><br>
+    
+    <strong><font size="+2">Shading</font></strong><br>
+    We can cast light on the cube by introducing<br>
+    a light source.<br>
+    The way light hits the surface, and<br>
+    consequently how the cube is illuminated,<br>
+    depends on what model we choose.<br><br>
+    
+    <strong>Default</strong><br>
+    No light source is present and shading<br>
+    is disabled.<br>
+    <button id="ShadingOff" disabled>Disable Shading</button><br><br>
+    
+    <strong>Gouraud Model</strong><br>
+    The shading is vertex-based, less precise and<br>
+    cheaper to compute.<br>
+    <button id="Gouraud">Enable Gouraud Model</button><br><br>
+    
+    <strong>Phong Model</strong><br>
+    The shading is fragment-based, more precise<br>
+    and computationally expensive.<br>
+    <button id="Phong">Enable Phong Model</button><br>
+    --------------------------------------------------------<br><br>
+</div>
+
+<div style="width:512px; float:left;"> <!-- Permette di scrivere i pulsanti a destra -->
+    <canvas id="gl-canvas" width="512" height="512">
+    Oops ... your browser doesn't support the HTML5 canvas element
+    </canvas>
+</div>
+
+<div style="width:320px; height:620px; float:left; overflow-y: scroll; overflow-x: hidden;">
+    <strong><font size="+2">Viewing Volume</font></strong><br>
+    It's the volume delimited by the near and far<br>
+    planes and essentially what the camera can see.<br>
+    In order to change it, we can tweak the<br>
+    position of these two planes.<br><br>
+
+    <strong>Near Plane</strong><br>
+    Everything between the near plane and the<br>
+    camera is clipped out.<br>
+    <i>0.1</i><input id="Near Plane" type="range" min="0.1" max="8.0" step="0.2" value="0.1" /><i>8</i><br><br>
+
+    <strong>Far Plane</strong><br>
+    Everything there is beyond the far plane is<br>
+    clipped out.<br>
+    <i>8</i><input id="Far Plane" type="range" min="8.0" max="10.0" step="1" value="8.0" /><i>10</i><br>
+    --------------------------------------------------------<br><br>
+
+    <strong><font size="+2">Viewer Position</font></strong><br>
+    The position of the camera is determined by a 3vec called "eye".<br>
+    We can tweak its position with a simple<br>
+    formula:<br>
+    eye.x = radius*sin(theta)*cos(phi)<br>
+    eye.y = radius*sin(theta)*sin(phi)<br>
+    eye.z = radius*cos(theta)<br><br>
+
+    <strong>Radius</strong><br>
+    <i>0.05</i><input id="Radius" type="range" min="0.05" max="10" step="0.1" value="3" /><i>10</i><br><br>
+
+    <strong>Theta</strong><br>
+    <i>-180</i><input id="Theta" type="range" min="-180" max="180" step="5" value="0" /><i>180</i><br><br>
+
+    <strong>Phi</strong><br>
+    <i>-90</i><input id="Phi" type="range" min="-90" max="90" step="5" value="0" /><i>90</i><br>
+    --------------------------------------------------------<br><br>
+    
+    <strong><font size="+2">Texture Mapping</font></strong><br>
+    We can assign an image to each side of the<br>
+    cube by enabling this option.<br><br>
+    
+    <strong>Default</strong><br>
+    No image is applied on the cube.<br>
+    <button id="TexturingOff" disabled>Disable Texturing</button><br><br>
+    
+    <strong>Procedural Texture</strong><br>
+    Apply to the cube a texture that is defined<br>
+    inside the program.<br>
+    <button id="Procedural">Enable Procedural Texture</button><br><br>
+    
+    <strong>External Texture</strong><br>
+    Apply to the cube a texture that can be<br>
+    found online.<br>
+    <button id="External">Enable External Texture</button><br>
+    --------------------------------------------------------<br><br>
+</div>
+<img id = "texImage" src = "https://upload.wikimedia.org/wikipedia/commons/6/63/Icon_Bird_512x512.png" crossorigin = "anonymous"  hidden></img>
+</body>
+</html>
